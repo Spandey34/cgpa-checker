@@ -290,10 +290,10 @@ function ResultPanel({ result, onDownload, onReset, onViewHistory }) {
                 <tr className="bg-slate-900 border-b border-slate-800">
                   {[
                     "Reg. Number",
+                    "Name",
                     "Entered CGPA",
                     "Actual CGPA",
                     "Difference",
-                    "Status",
                   ].map((h) => (
                     <th
                       key={h}
