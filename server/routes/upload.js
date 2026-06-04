@@ -254,10 +254,6 @@ router.post("/process", requireAuth, async (req, res) => {
             pattern: "solid",
             fgColor: { argb: fillColor },
           };
-          cell.font = {
-            color: { argb: rowObj.flagged ? "FF9C0006" : "FF9A6700" },
-            bold: true,
-          };
         });
       }
     });
