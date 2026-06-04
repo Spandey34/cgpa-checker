@@ -88,13 +88,16 @@ router.post("/bulk-import", requireAuth, async (req, res) => {
       },
     }));
 
-    const result = await Student.bulkWrite(ops);
+    // const result = await Student.bulkWrite(ops);
+    // res.json({
+    //   message: "Import successful",
+    //   upserted: result.upsertedCount,
+    //   modified: result.modifiedCount,
+    //   total: docs.length,
+    // });
     res.json({
-      message: "Import successful",
-      upserted: result.upsertedCount,
-      modified: result.modifiedCount,
-      total: docs.length,
-    });
+      message: "Currently, bulk import is disabled to prevent accidental overwrites. Please contact support to enable this feature.",
+    })
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

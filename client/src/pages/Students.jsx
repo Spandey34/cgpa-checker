@@ -3,6 +3,8 @@ import { useDropzone } from "react-dropzone";
 import api from "../lib/api";
 import toast from "react-hot-toast";
 
+const ENABLE_STUDENT_IMPORT = false;
+
 export default function Students() {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -15,7 +17,9 @@ export default function Students() {
   const fetchStudents = async (p = 1, q = "") => {
     setLoading(true);
     try {
-      const { data } = await api.get(`/students?page=${p}&limit=30&search=${encodeURIComponent(q)}`);
+      const { data } = await api.get(
+        `/students?page=${p}&limit=30&search=${encodeURIComponent(q)}`
+      );
       setStudents(data.students);
       setTotal(data.total);
       setPage(p);
@@ -26,7 +30,9 @@ export default function Students() {
     }
   };
 
-  useEffect(() => { fetchStudents(); }, []);
+  useEffect(() => {
+    fetchStudents();
+  }, []);
 
   const onDrop = useCallback((accepted) => {
     if (accepted[0]) setImportFile(accepted[0]);
@@ -42,10 +48,16 @@ export default function Students() {
   });
 
   const handleImport = async () => {
+    if (!ENABLE_STUDENT_IMPORT) {
+      toast.error("Student import is currently disabled");
+      return;
+    }
+
     if (!importFile) return toast.error("Select a file first");
     setImporting(true);
     const fd = new FormData();
     fd.append("file", importFile);
+
     try {
       const { data } = await api.post("/students/bulk-import", fd, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -78,36 +90,45 @@ export default function Students() {
         <p className="text-slate-500 text-sm mt-1">{total.toLocaleString()} ground truth records</p>
       </div>
 
-      {/* Import section */}
-      <div className="bg-[#111827] border border-slate-800/60 rounded-xl p-5 mb-6 animate-fade-up-delay-1">
-        <h2 className="text-slate-300 text-sm font-medium mb-3">Bulk Import Students</h2>
-        <p className="text-slate-500 text-xs mb-3">
-          Upload an Excel with columns: <span className="font-mono text-slate-400">Registration Number, CGPA</span> (and optionally Name, Branch, Batch). Existing records are updated.
-        </p>
-        <div className="flex items-center gap-3">
-          <div
-            {...getRootProps()}
-            className={`flex-1 border border-dashed rounded-lg px-4 py-3 text-xs cursor-pointer transition-colors ${
-              isDragActive ? "border-indigo-500 bg-indigo-500/5 text-indigo-300" :
-              importFile ? "border-emerald-500/50 text-emerald-400" :
-              "border-slate-700 text-slate-500 hover:border-slate-500"
-            }`}
-          >
-            <input {...getInputProps()} />
-            {importFile ? `✓ ${importFile.name}` : "Drop Excel file here or click to browse"}
-          </div>
-          {importFile && (
-            <button
-              onClick={handleImport}
-              disabled={importing}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-2"
+      {ENABLE_STUDENT_IMPORT && (
+        <div className="bg-[#111827] border border-slate-800/60 rounded-xl p-5 mb-6 animate-fade-up-delay-1">
+          <h2 className="text-slate-300 text-sm font-medium mb-3">Bulk Import Students</h2>
+          <p className="text-slate-500 text-xs mb-3">
+            Upload an Excel with columns:{" "}
+            <span className="font-mono text-slate-400">Registration Number, CGPA</span>
+            {" "} (and optionally Name, Branch, Batch). Existing records are updated.
+          </p>
+          <div className="flex items-center gap-3">
+            <div
+              {...getRootProps()}
+              className={`flex-1 border border-dashed rounded-lg px-4 py-3 text-xs cursor-pointer transition-colors ${
+                isDragActive
+                  ? "border-indigo-500 bg-indigo-500/5 text-indigo-300"
+                  : importFile
+                  ? "border-emerald-500/50 text-emerald-400"
+                  : "border-slate-700 text-slate-500 hover:border-slate-500"
+              }`}
             >
-              {importing ? <span className="animate-spin w-3 h-3 border border-white/30 border-t-white rounded-full" /> : "↑"}
-              {importing ? "Importing…" : "Import"}
-            </button>
-          )}
+              <input {...getInputProps()} />
+              {importFile ? `✓ ${importFile.name}` : "Drop Excel file here or click to browse"}
+            </div>
+            {importFile && (
+              <button
+                onClick={handleImport}
+                disabled={importing}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-2"
+              >
+                {importing ? (
+                  <span className="animate-spin w-3 h-3 border border-white/30 border-t-white rounded-full" />
+                ) : (
+                  "↑"
+                )}
+                {importing ? "Importing…" : "Import"}
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Search */}
       <div className="flex gap-2 mb-4 animate-fade-up-delay-2">
@@ -122,10 +143,17 @@ export default function Students() {
         <button
           onClick={() => fetchStudents(1, search)}
           className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm transition-colors"
-        >Search</button>
+        >
+          Search
+        </button>
         {search && (
-          <button onClick={() => { setSearch(""); fetchStudents(1, ""); }}
-            className="px-3 py-2.5 border border-slate-700 text-slate-400 rounded-xl text-sm transition-colors hover:text-slate-200">
+          <button
+            onClick={() => {
+              setSearch("");
+              fetchStudents(1, "");
+            }}
+            className="px-3 py-2.5 border border-slate-700 text-slate-400 rounded-xl text-sm transition-colors hover:text-slate-200"
+          >
             Clear
           </button>
         )}
@@ -166,7 +194,9 @@ export default function Students() {
                     <button
                       onClick={() => handleDelete(s._id)}
                       className="text-slate-600 hover:text-red-400 transition-colors text-xs"
-                    >✕</button>
+                    >
+                      ✕
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -175,16 +205,21 @@ export default function Students() {
         </div>
       </div>
 
-      {/* Pagination */}
       {Math.ceil(total / 30) > 1 && (
         <div className="flex items-center justify-center gap-2 mt-4">
-          <button onClick={() => fetchStudents(page - 1, search)} disabled={page <= 1}
-            className="px-3 py-1.5 border border-slate-700 text-slate-400 rounded-lg text-xs disabled:opacity-30 hover:border-slate-500 transition-colors">
+          <button
+            onClick={() => fetchStudents(page - 1, search)}
+            disabled={page <= 1}
+            className="px-3 py-1.5 border border-slate-700 text-slate-400 rounded-lg text-xs disabled:opacity-30 hover:border-slate-500 transition-colors"
+          >
             ← Prev
           </button>
           <span className="text-slate-500 text-xs">Page {page} of {Math.ceil(total / 30)}</span>
-          <button onClick={() => fetchStudents(page + 1, search)} disabled={page >= Math.ceil(total / 30)}
-            className="px-3 py-1.5 border border-slate-700 text-slate-400 rounded-lg text-xs disabled:opacity-30 hover:border-slate-500 transition-colors">
+          <button
+            onClick={() => fetchStudents(page + 1, search)}
+            disabled={page >= Math.ceil(total / 30)}
+            className="px-3 py-1.5 border border-slate-700 text-slate-400 rounded-lg text-xs disabled:opacity-30 hover:border-slate-500 transition-colors"
+          >
             Next →
           </button>
         </div>
