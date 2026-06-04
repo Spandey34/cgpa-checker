@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 const resultRowSchema = new mongoose.Schema(
   {
     registrationNumber: String,
+    name: String,
     enteredCgpa: Number,
     actualCgpa: Number,
     difference: Number,

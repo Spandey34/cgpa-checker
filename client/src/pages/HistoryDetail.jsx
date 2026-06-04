@@ -129,7 +129,7 @@ export default function HistoryDetail() {
           <table className="w-full text-xs">
             <thead className="sticky top-0">
               <tr className="bg-slate-900 border-b border-slate-800">
-                {["#", "Reg. Number", "Entered CGPA", "Actual CGPA", "Difference", "Status"].map(h => (
+                {["#", "Reg. Number", "Name", "Entered CGPA", "Actual CGPA", "Difference"].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-slate-400 font-mono font-medium whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -144,13 +144,11 @@ export default function HistoryDetail() {
                 >
                   <td className="px-4 py-2.5 text-slate-600 font-mono">{i + 1}</td>
                   <td className="px-4 py-2.5 font-mono text-slate-300">{row.registrationNumber}</td>
+                  <td className="px-4 py-2.5 font-mono text-slate-300">{row.name}</td>
                   <td className="px-4 py-2.5 font-mono text-slate-300">{row.enteredCgpa ?? "—"}</td>
                   <td className="px-4 py-2.5 font-mono text-slate-300">{row.actualCgpa ?? "—"}</td>
                   <td className={`px-4 py-2.5 font-mono font-bold ${row.flagged ? "text-red-400" : "text-slate-500"}`}>
                     {row.difference !== null ? row.difference.toFixed(4) : "—"}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <StatusBadge flagged={row.flagged} found={row.found} />
                   </td>
                 </tr>
               ))}

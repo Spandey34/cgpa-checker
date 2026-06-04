@@ -1,30 +1,48 @@
 import express from "express";
-import XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import Student from "../models/Student.js";
 import History from "../models/History.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const router = express.Router();
 
-// Helper: find reg number column
+const normalize = (value) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s._-]/g, "");
+
+const normalizeReg = (value) =>
+  String(value ?? "").trim().toUpperCase();
+
 const findRegCol = (headers) => {
-  return headers.find((h) =>
-    ["regno", "registrationnumber", "registration", "rollno", "reg no", "regnno", "reg. no"].includes(
-      h.toLowerCase().replace(/[\s._-]/g, "")
-    )
-  );
+  const aliases = [
+    "regno",
+    "registrationnumber",
+    "registration",
+    "rollno",
+    "regnno",
+    "regno",
+    "regnumb",
+    "regnumber",
+  ];
+
+  return headers.find((h) => aliases.includes(normalize(h)));
 };
 
-// Helper: find entered CGPA column
 const findCgpaCol = (headers) => {
-  return headers.find((h) =>
-    ["cgpa", "enteredcgpa", "selfcgpa", "reportedcgpa"].includes(
-      h.toLowerCase().replace(/[\s._-]/g, "")
-    )
-  );
+  const aliases = [
+    "cgpa",
+    "enteredcgpa",
+    "selfcgpa",
+    "reportedcgpa",
+    "gpa",
+    "enteredgpa",
+  ];
+
+  return headers.find((h) => aliases.includes(normalize(h)));
 };
 
-// POST /api/upload/process
 router.post("/process", requireAuth, async (req, res) => {
   try {
     if (!req.files || !req.files.file) {
@@ -32,147 +50,262 @@ router.post("/process", requireAuth, async (req, res) => {
     }
 
     const { topic, threshold } = req.body;
+
     if (!topic || !topic.trim()) {
       return res.status(400).json({ error: "Topic is required" });
     }
 
-    const delta = parseFloat(threshold) || 0.02;
+    const delta = Number.parseFloat(threshold);
+    const safeDelta = Number.isFinite(delta) ? delta : 0.02;
+
     const fileData = req.files.file.data;
     const originalFileName = req.files.file.name;
 
-    // Parse workbook
-    const workbook = XLSX.read(fileData, { type: "buffer" });
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+    // Read Excel file
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(fileData);
 
-    if (!rows.length) {
-      return res.status(400).json({ error: "Excel file is empty or has no data rows" });
+    const sheet = workbook.worksheets[0];
+    if (!sheet) {
+      return res.status(400).json({ error: "Excel file has no sheets" });
     }
 
-    const headers = Object.keys(rows[0]);
+    const headerRow = sheet.getRow(1);
+    const headers = [];
+
+    headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      headers[colNumber - 1] = String(cell.value ?? "").trim();
+    });
+
     const regCol = findRegCol(headers);
     const cgpaCol = findCgpaCol(headers);
 
     if (!regCol) {
       return res.status(400).json({
-        error: `Could not find Registration Number column. Found columns: ${headers.join(", ")}. Expected a column like 'Registration Number', 'Reg No', or 'Roll No'.`,
-      });
-    }
-    if (!cgpaCol) {
-      return res.status(400).json({
-        error: `Could not find CGPA column. Found columns: ${headers.join(", ")}. Expected a column like 'CGPA' or 'GPA'.`,
+        error: `Could not find Registration Number column. Found columns: ${headers.join(
+          ", "
+        )}. Expected a column like 'Registration Number', 'Reg No', or 'Roll No'.`,
       });
     }
 
-    // Extract reg numbers to batch-fetch from DB
-    const regNumbers = rows
-      .map((r) => String(r[regCol]).trim().toUpperCase())
-      .filter(Boolean);
+    if (!cgpaCol) {
+      return res.status(400).json({
+        error: `Could not find CGPA column. Found columns: ${headers.join(
+          ", "
+        )}. Expected a column like 'CGPA' or 'GPA'.`,
+      });
+    }
+
+    const regIndex = headers.indexOf(regCol);
+    const cgpaIndex = headers.indexOf(cgpaCol);
+
+    if (regIndex === -1 || cgpaIndex === -1) {
+      return res.status(400).json({
+        error: "Could not map required columns correctly.",
+      });
+    }
+
+    // Extract rows
+    const rows = [];
+    for (let r = 2; r <= sheet.rowCount; r++) {
+      const row = sheet.getRow(r);
+
+      const rowObj = {};
+      let hasAnyValue = false;
+
+      headers.forEach((header, idx) => {
+        const cellText = String(row.getCell(idx + 1).text ?? "").trim();
+        rowObj[header] = cellText;
+        if (cellText !== "") hasAnyValue = true;
+      });
+
+      if (hasAnyValue) {
+        rows.push(rowObj);
+      }
+    }
+
+    if (!rows.length) {
+      return res.status(400).json({
+        error: "Excel file is empty or has no data rows",
+      });
+    }
+
+    // Fetch students in batch
+    const regNumbers = [
+      ...new Set(
+        rows
+          .map((r) => normalizeReg(r[regCol]))
+          .filter((v) => v.length > 0)
+      ),
+    ];
 
     const dbStudents = await Student.find({
       registrationNumber: { $in: regNumbers },
-    }).select("registrationNumber actualCgpa name");
+    })
+      .select("registrationNumber actualCgpa name")
+      .lean();
 
     const dbMap = {};
     dbStudents.forEach((s) => {
-      dbMap[s.registrationNumber] = {
-        actualCgpa: s.actualCgpa,
+      dbMap[normalizeReg(s.registrationNumber)] = {
+        actualCgpa: Number(s.actualCgpa),
         name: s.name,
       };
     });
 
-    // Process each row
     const results = [];
     const outputRows = [];
 
     rows.forEach((row) => {
-      const regNum = String(row[regCol]).trim().toUpperCase();
-      const enteredCgpa = parseFloat(row[cgpaCol]);
-      const actualCgpa = dbMap[regNum].actualCgpa;
+      const regNum = normalizeReg(row[regCol]);
+      const enteredCgpaRaw = row[cgpaCol];
+      const enteredCgpa = Number.parseFloat(String(enteredCgpaRaw).trim());
 
-      const found = dbMap[regNum] !== undefined;
-      let diff = found ? (enteredCgpa - actualCgpa) : null;
-      const flagged = found ? diff > delta : false;
+      const found = Boolean(regNum && dbMap[regNum]);
+      const actualCgpa = found ? Number(dbMap[regNum].actualCgpa) : null;
       const name = found ? dbMap[regNum].name : null;
 
+      let difference = null;
+      let flagged = false;
+      let status = "OK";
+
+      if (!found) {
+        status = "NOT IN DATABASE";
+      } else if (!Number.isFinite(enteredCgpa)) {
+        status = "INVALID ENTERED CGPA";
+      } else if (!Number.isFinite(actualCgpa)) {
+        status = "INVALID DATABASE CGPA";
+      } else {
+        difference = enteredCgpa - actualCgpa;
+        flagged = difference > safeDelta;
+        status = flagged ? "FLAGGED" : "OK";
+      }
+
       results.push({
-        name: name,
+        name,
         registrationNumber: regNum,
-        enteredCgpa: isNaN(enteredCgpa) ? null : enteredCgpa,
-        actualCgpa: found ? actualCgpa : null,
-        difference: diff !== null ? parseFloat(diff.toFixed(4)) : null,
+        enteredCgpa: Number.isFinite(enteredCgpa) ? enteredCgpa : null,
+        actualCgpa: Number.isFinite(actualCgpa) ? actualCgpa : null,
+        difference: difference !== null ? Number(difference.toFixed(4)) : null,
         flagged,
         found,
+        status,
       });
 
-      // Build output row with all original columns + new ones
-      const outRow = { ...row };
-      outRow["Actual CGPA"] = found ? actualCgpa : "NOT FOUND";
-      outRow["Difference"] = diff !== null ? parseFloat(diff.toFixed(4)) : "N/A";
-      outRow["Status"] = !found ? "NOT IN DATABASE" : flagged ? "FLAGGED" : "OK";
-      outputRows.push({ data: outRow, flagged: flagged || !found });
+      const outRow = headers.map((h) => row[h]);
+      outRow.push(
+        found ? actualCgpa : "NOT FOUND",
+        difference !== null ? Number(difference.toFixed(4)) : "N/A",
+        status
+      );
+
+      outputRows.push({
+        values: outRow,
+        flagged,
+        notFound: !found,
+      });
     });
 
     const flaggedCount = results.filter((r) => r.flagged).length;
     const notFoundCount = results.filter((r) => !r.found).length;
 
-    // Build output Excel with red highlighting for flagged rows
-    const newWb = XLSX.utils.book_new();
+    // Build output workbook
+    const newWb = new ExcelJS.Workbook();
+    const ws = newWb.addWorksheet("CGPA Verification");
 
-    // Create worksheet data
-    if (outputRows.length > 0) {
-      const wsData = outputRows.map((r) => r.data);
-      const ws = XLSX.utils.json_to_sheet(wsData);
+    const outputHeaders = [...headers, "Actual CGPA", "Difference", "Status"];
+    ws.addRow(outputHeaders);
 
-      // Apply red fill to flagged rows
-      const range = XLSX.utils.decode_range(ws["!ref"]);
-      const headerRowCount = 1;
-
-      outputRows.forEach((row, idx) => {
-        if (row.flagged) {
-          for (let col = range.s.c; col <= range.e.c; col++) {
-            const cellAddr = XLSX.utils.encode_cell({ r: idx + headerRowCount, c: col });
-            if (!ws[cellAddr]) ws[cellAddr] = { v: "", t: "s" };
-            ws[cellAddr].s = {
-              fill: {
-                patternType: "solid",
-                fgColor: { rgb: "FFCCCC" }, // light red
-              },
-              font: { color: { rgb: "CC0000" }, bold: true },
-            };
-          }
-        }
-      });
-
-      // Style header row
-      for (let col = range.s.c; col <= range.e.c; col++) {
-        const cellAddr = XLSX.utils.encode_cell({ r: 0, c: col });
-        if (ws[cellAddr]) {
-          ws[cellAddr].s = {
-            fill: { patternType: "solid", fgColor: { rgb: "1E293B" } },
-            font: { color: { rgb: "FFFFFF" }, bold: true },
-          };
-        }
-      }
-
-      XLSX.utils.book_append_sheet(newWb, ws, "CGPA Verification");
-    }
-
-    // Generate Excel buffer
-    const excelBuffer = XLSX.write(newWb, {
-      type: "buffer",
-      bookType: "xlsx",
-      cellStyles: true,
+    // Header styling
+    const headerRowOut = ws.getRow(1);
+    headerRowOut.eachCell((cell) => {
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF1E293B" },
+      };
+      cell.font = {
+        color: { argb: "FFFFFFFF" },
+        bold: true,
+      };
+      cell.alignment = { vertical: "middle", horizontal: "center" };
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFD1D5DB" } },
+        left: { style: "thin", color: { argb: "FFD1D5DB" } },
+        bottom: { style: "thin", color: { argb: "FFD1D5DB" } },
+        right: { style: "thin", color: { argb: "FFD1D5DB" } },
+      };
     });
 
-    const base64Excel = excelBuffer.toString("base64");
+    // Data rows
+    outputRows.forEach((rowObj) => {
+      const addedRow = ws.addRow(rowObj.values);
 
-    // Save to history
+      const fillColor = rowObj.flagged
+        ? "FFFFC7CE" // light red
+        : rowObj.notFound
+        ? "FFFFE5CC" // light orange
+        : null;
+
+      if (fillColor) {
+        addedRow.eachCell((cell) => {
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: fillColor },
+          };
+          cell.font = {
+            color: { argb: rowObj.flagged ? "FF9C0006" : "FF9A6700" },
+            bold: true,
+          };
+        });
+      }
+    });
+
+    // Borders and alignment for all used cells
+    ws.eachRow((row, rowNumber) => {
+      row.eachCell((cell) => {
+        cell.border = {
+          top: { style: "thin", color: { argb: "FFD1D5DB" } },
+          left: { style: "thin", color: { argb: "FFD1D5DB" } },
+          bottom: { style: "thin", color: { argb: "FFD1D5DB" } },
+          right: { style: "thin", color: { argb: "FFD1D5DB" } },
+        };
+        cell.alignment = {
+          vertical: "middle",
+          horizontal: rowNumber === 1 ? "center" : "left",
+          wrapText: true,
+        };
+      });
+    });
+
+    ws.views = [{ state: "frozen", ySplit: 1 }];
+    ws.autoFilter = {
+      from: "A1",
+      to: ws.getRow(1).getCell(ws.columnCount).address,
+    };
+
+    // Auto width
+    ws.columns.forEach((col, idx) => {
+      const header = String(outputHeaders[idx] ?? "");
+      let maxLen = header.length;
+
+      outputRows.forEach((r) => {
+        const val = r.values[idx];
+        const len = String(val ?? "").length;
+        if (len > maxLen) maxLen = len;
+      });
+
+      col.width = Math.min(Math.max(maxLen + 2, 12), 30);
+    });
+
+    const excelBuffer = await newWb.xlsx.writeBuffer();
+    const base64Excel = Buffer.from(excelBuffer).toString("base64");
+
     const historyEntry = await History.create({
       userId: req.userId,
       topic: topic.trim(),
-      threshold: delta,
+      threshold: safeDelta,
       originalFileName,
       totalRows: rows.length,
       flaggedCount,
@@ -187,10 +320,10 @@ router.post("/process", requireAuth, async (req, res) => {
       totalRows: rows.length,
       flaggedCount,
       notFoundCount,
-      threshold: delta,
-      results: results.slice(0, 100), // preview first 100
+      threshold: safeDelta,
+      results: results.slice(0, 100),
       excelBase64: base64Excel,
-      fileName: `${topic.replace(/\s+/g, "_")}_verified.xlsx`,
+      fileName: `${topic.trim().replace(/\s+/g, "_")}_verified.xlsx`,
     });
   } catch (err) {
     console.error("Upload error:", err);
