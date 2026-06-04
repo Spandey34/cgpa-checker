@@ -13,7 +13,7 @@ export const requireAuth = async (req, res, next) => {
 
     const payload = await verifyToken(token, {
       jwtKey: process.env.CLERK_JWT_KEY,
-      authorizedParties: ["http://localhost:3000"], // your frontend origin
+      authorizedParties: [process.env.CLIENT_URL], // your frontend origin
     });
 
     req.userId = payload.sub;
