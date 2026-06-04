@@ -80,7 +80,7 @@ router.post("/bulk-import", requireAuth, async (req, res) => {
     };
 
     const docs = rows.map(normalize).filter((r) => r && !isNaN(r.actualCgpa));
-
+    console.log("Excel columns found:", Object.keys(rows[0]));
     if (!docs.length) {
       return res.status(400).json({
         error: "Could not parse rows. Ensure columns: Registration Number, CGPA",
