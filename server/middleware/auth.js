@@ -1,8 +1,8 @@
-import { createClerkClient } from "@clerk/backend";
+import { verifyToken } from "@clerk/backend";
 import dotenv from "dotenv";
 dotenv.config();
 
-const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
+
 
 export const requireAuth = async (req, res, next) => {
   try {
@@ -14,7 +14,9 @@ export const requireAuth = async (req, res, next) => {
     const token = authHeader.split(" ")[1];
 
     // Verify session token with Clerk
-    const payload = await clerk.verifyToken(token);
+    const payload = await verifyToken(token, {
+      secretKey: process.env.CLERK_SECRET_KEY,
+    });
     req.userId = payload.sub; // Clerk user ID
     next();
   } catch (err) {
