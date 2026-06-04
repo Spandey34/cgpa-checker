@@ -280,10 +280,6 @@ router.post("/process", requireAuth, async (req, res) => {
     });
 
     ws.views = [{ state: "frozen", ySplit: 1 }];
-    ws.autoFilter = {
-      from: "A1",
-      to: ws.getRow(1).getCell(ws.columnCount).address,
-    };
 
     // Auto width
     ws.columns.forEach((col, idx) => {
