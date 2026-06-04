@@ -191,12 +191,12 @@ export default function Students() {
                   <td className="px-4 py-2.5 text-slate-400">{s.batch || "—"}</td>
                   <td className="px-4 py-2.5 font-mono font-bold text-indigo-300">{s.actualCgpa.toFixed(2)}</td>
                   <td className="px-4 py-2.5">
-                    <button
+                    {/* <button
                       onClick={() => handleDelete(s._id)}
                       className="text-slate-600 hover:text-red-400 transition-colors text-xs"
                     >
                       ✕
-                    </button>
+                    </button> */}
                   </td>
                 </tr>
               ))}

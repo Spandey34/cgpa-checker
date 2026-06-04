@@ -106,7 +106,7 @@ router.post("/bulk-import", requireAuth, async (req, res) => {
 // DELETE a student
 router.delete("/:id", requireAuth, async (req, res) => {
   try {
-    await Student.findByIdAndDelete(req.params.id);
+    //await Student.findByIdAndDelete(req.params.id);
     res.json({ message: "Deleted" });
   } catch (err) {
     res.status(500).json({ error: err.message });
