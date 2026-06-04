@@ -72,11 +72,14 @@ router.post("/process", requireAuth, async (req, res) => {
 
     const dbStudents = await Student.find({
       registrationNumber: { $in: regNumbers },
-    }).select("registrationNumber actualCgpa");
+    }).select("registrationNumber actualCgpa name");
 
     const dbMap = {};
     dbStudents.forEach((s) => {
-      dbMap[s.registrationNumber] = s.actualCgpa;
+      dbMap[s.registrationNumber] = {
+        actualCgpa: s.actualCgpa,
+        name: s.name,
+      };
     });
 
     // Process each row
@@ -86,13 +89,15 @@ router.post("/process", requireAuth, async (req, res) => {
     rows.forEach((row) => {
       const regNum = String(row[regCol]).trim().toUpperCase();
       const enteredCgpa = parseFloat(row[cgpaCol]);
-      const actualCgpa = dbMap[regNum];
+      const actualCgpa = dbMap[regNum].actualCgpa;
 
-      const found = actualCgpa !== undefined;
-      const diff = found ? Math.abs(enteredCgpa - actualCgpa) : null;
+      const found = dbMap[regNum] !== undefined;
+      let diff = found ? (enteredCgpa - actualCgpa) : null;
       const flagged = found ? diff > delta : false;
+      const name = found ? dbMap[regNum].name : null;
 
       results.push({
+        name: name,
         registrationNumber: regNum,
         enteredCgpa: isNaN(enteredCgpa) ? null : enteredCgpa,
         actualCgpa: found ? actualCgpa : null,
