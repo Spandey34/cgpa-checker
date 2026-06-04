@@ -13,11 +13,11 @@ router.get("/", requireAuth, async (req, res) => {
 
     const query = search
       ? {
-          $or: [
-            { registrationNumber: { $regex: search, $options: "i" } },
-            { name: { $regex: search, $options: "i" } },
-          ],
-        }
+        $or: [
+          { registrationNumber: { $regex: search, $options: "i" } },
+          { name: { $regex: search, $options: "i" } },
+        ],
+      }
       : {};
 
     const total = await Student.countDocuments(query);
@@ -50,24 +50,32 @@ router.post("/bulk-import", requireAuth, async (req, res) => {
 
     // Normalize: accept columns like reg_no, registration, registrationNumber, RegNo etc.
     const normalize = (row) => {
-      const keys = Object.keys(row).map((k) => k.toLowerCase().replace(/[\s_-]/g, ""));
-      const regKey = Object.keys(row).find((k) =>
-        ["regno", "registrationnumber", "registration", "regno", "rollno"].includes(
-          k.toLowerCase().replace(/[\s_-]/g, "")
-        )
-      );
-      const cgpaKey = Object.keys(row).find((k) =>
-        ["cgpa", "actualcgpa", "marks"].includes(
-          k.toLowerCase().replace(/[\s_-]/g, "")
-        )
-      );
+      // Normalize all keys once for comparison
+      const findKey = (row, candidates) =>
+        Object.keys(row).find((k) =>
+          candidates.includes(k.toLowerCase().replace(/[\s_-]/g, ""))
+        );
+
+      const regKey = findKey(row, [
+        "regno", "registrationnumber", "registration", "rollno", "rollnumber"
+      ]);
+
+      const cgpaKey = findKey(row, [
+        "cgpa", "actualcgpa", "marks", "gpa"
+      ]);
+
+      const nameKey = findKey(row, ["name", "studentname", "fullname"]);
+      const branchKey = findKey(row, ["branch", "department", "dept"]);
+      const batchKey = findKey(row, ["batch", "year", "admissionyear"]);
+
       if (!regKey || !cgpaKey) return null;
+
       return {
         registrationNumber: String(row[regKey]).trim().toUpperCase(),
         actualCgpa: parseFloat(row[cgpaKey]),
-        name: row["Name"] || row["name"] || row["Student Name"] || "",
-        branch: row["Branch"] || row["branch"] || row["Department"] || "",
-        batch: row["Batch"] || row["batch"] || row["Year"] || "",
+        name: nameKey ? row[nameKey] : "",
+        branch: branchKey ? row[branchKey] : "",
+        batch: batchKey ? row[batchKey] : "",
       };
     };
 
