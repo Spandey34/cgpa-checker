@@ -9,7 +9,7 @@ const router = express.Router();
 // Helper: find reg number column
 const findRegCol = (headers) => {
   return headers.find((h) =>
-    ["regno", "registrationnumber", "registration", "rollno", "reg no", "reg. no"].includes(
+    ["regno", "registrationnumber", "registration", "rollno", "reg no", "regnno", "reg. no"].includes(
       h.toLowerCase().replace(/[\s._-]/g, "")
     )
   );
