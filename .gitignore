@@ -3,3 +3,6 @@ node_modules/
 dist/
 .DS_Store
 *.log
+data.ipynb
+nitjsr_leaderboard.xlsx
+~$nitjsr_leaderboard.xlsx

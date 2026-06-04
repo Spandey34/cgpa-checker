@@ -57,7 +57,7 @@ router.post("/bulk-import", requireAuth, async (req, res) => {
         )
       );
       const cgpaKey = Object.keys(row).find((k) =>
-        ["cgpa", "actualcgpa", "gpa", "marks"].includes(
+        ["cgpa", "actualcgpa", "marks"].includes(
           k.toLowerCase().replace(/[\s_-]/g, "")
         )
       );

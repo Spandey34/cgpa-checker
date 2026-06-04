@@ -18,7 +18,7 @@ const findRegCol = (headers) => {
 // Helper: find entered CGPA column
 const findCgpaCol = (headers) => {
   return headers.find((h) =>
-    ["cgpa", "enteredcgpa", "selfcgpa", "reportedcgpa", "gpa"].includes(
+    ["cgpa", "enteredcgpa", "selfcgpa", "reportedcgpa"].includes(
       h.toLowerCase().replace(/[\s._-]/g, "")
     )
   );
