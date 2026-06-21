@@ -1,0 +1,64 @@
+name: Production CI/CD
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-validate:
+    name: Build & Validate Services
+    runs-on: ubuntu-latest
+    
+    # Inject all secrets into the step environment
+    env:
+      MONGODB_URI: ${{ secrets.MONGODB_URI }}
+      CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+      CLERK_WEBHOOK_SECRET: ${{ secrets.CLERK_WEBHOOK_SECRET }}
+      CLIENT_URL: ${{ secrets.CLIENT_URL }}
+      VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+      VITE_API_URL: ${{ secrets.VITE_API_URL }}
+      CLERK_JWT_KEY: ${{ secrets.CLERK_JWT_KEY }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Build and Spin Up Containers
+        run: docker-compose up --build -d
+
+      - name: Verify Service Connectivity
+        run: |
+          echo "Waiting for services to initialize..."
+          sleep 10
+          
+          # Check if the backend application is up and healthy
+          if [ "$(docker inspect -f '{{.State.Running}}' $(docker-compose ps -q backend))" = "true" ]; then
+            echo "Backend successfully built and connected to production resources."
+          else
+            echo "Backend container failed to run with the provided environment configurations."
+            docker-compose logs backend
+            exit 1
+          fi
+
+          # Check if the frontend container is up
+          if [ "$(docker inspect -f '{{.State.Running}}' $(docker-compose ps -q frontend))" = "true" ]; then
+            echo "Frontend successfully built and running."
+          else
+            echo "Frontend build stage failed."
+            docker-compose logs frontend
+            exit 1
+          fi
+
+      - name: Clean up Containers
+        if: always()
+        run: docker-compose down
+
+  deploy:
+    name: Trigger Production Deployment
+    needs: build-and-validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Webhook
+        run: |
+          curl -X POST "${{ secrets.RENDER_DEPLOY_WEBHOOK_URL_FRONTEND }}"
+          curl -X POST "${{ secrets.RENDER_DEPLOY_WEBHOOK_URL_BACKEND }}"
