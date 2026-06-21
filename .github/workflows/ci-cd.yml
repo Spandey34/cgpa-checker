@@ -32,20 +32,20 @@ jobs:
           sleep 10
           
           # Check if the backend application is up and healthy
-          if [ "$(docker inspect -f '{{.State.Running}}' $(docker compose ps -q backend))" = "true" ]; then
+          if [ "$(docker inspect -f '{{.State.Running}}' $(docker compose ps -q server))" = "true" ]; then
             echo "Backend successfully built and connected to production resources."
           else
             echo "Backend container failed to run with the provided environment configurations."
-            docker compose logs backend
+            docker compose logs server
             exit 1
           fi
 
           # Check if the frontend container is up
-          if [ "$(docker inspect -f '{{.State.Running}}' $(docker compose ps -q frontend))" = "true" ]; then
+          if [ "$(docker inspect -f '{{.State.Running}}' $(docker compose ps -q client))" = "true" ]; then
             echo "Frontend successfully built and running."
           else
             echo "Frontend build stage failed."
-            docker compose logs frontend
+            docker compose logs client
             exit 1
           fi
 
